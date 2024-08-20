@@ -6,6 +6,7 @@ let routes = fs.readdirSync(__dirname);
 
 for (let route of routes) {
   if (route.includes('.js') && route != 'index.js') {
+    console.log(`Loading route: ${route}`);
     router.use('/' + route.replace('.js', ''), require('./' + route));
   }
 }
