@@ -5,15 +5,26 @@ const Response = require('../lib/Response');
 const CustomError = require('../lib/Error');
 const Enum = require('../config/Enum');
 
+
 router.get('/get-notes', async (req, res, next) => {
     try {
         let notes = await Note.find({});
+
+        notes = notes.map(note => ({
+            noteId: note.noteId,
+            title: note.title,
+            content: note.content,
+            createdAt: note.createdAt,
+            updatedAt: note.updatedAt
+        }));
+
         res.json(Response.successResponse(notes));
     } catch (err) {
         let errorResponse = Response.errorResponse(err);
         res.status(errorResponse.status || Enum.HTTP_CODES.INT_SERVER_ERROR).json(errorResponse);
     }
 });
+
 
 router.post('/create', async (req, res) => {
     let body = req.body;
@@ -28,37 +39,52 @@ router.post('/create', async (req, res) => {
 
         let note = new Note({
             title: body.title,
-            content: body.content,
-            createdBy: req.user?.id || null
+            content: body.content
         });
+
         await note.save();
-        res.json(Response.successResponse(body, "Note saved successfully"));
+
+
+        res.json(Response.successResponse({
+            noteId: note.noteId,
+            title: note.title,
+            content: note.content,
+            createdAt: note.createdAt,
+            updatedAt: note.updatedAt
+        }, "Note saved successfully"));
     } catch (err) {
         let errorResponse = Response.errorResponse(err);
         res.status(errorResponse.status || Enum.HTTP_CODES.INT_SERVER_ERROR).json(errorResponse);
     }
 });
 
+
 router.post('/update', async (req, res) => {
     let body = req.body;
 
     try {
-        if (!body._id) {
-            throw new CustomError(Enum.HTTP_CODES.BAD_REQUEST, [], "Error! _id field must be filled!");
+        if (!body.noteId) {
+            throw new CustomError(Enum.HTTP_CODES.BAD_REQUEST, [], "Error! noteId field must be filled!");
         }
 
         let updates = {};
         if (body.title) updates.title = body.title;
         if (body.content) updates.content = body.content;
 
-
-        const updatedNote = await Note.findByIdAndUpdate(body._id, updates, { new: true });
+        const updatedNote = await Note.findOneAndUpdate({ noteId: body.noteId }, updates, { new: true });
 
         if (!updatedNote) {
             throw new CustomError(Enum.HTTP_CODES.NOT_FOUND, [], "Note not found!");
         }
 
-        res.json(Response.successResponse(updatedNote, "Note updated successfully"));
+        // Yalnızca gerekli alanları dönüyoruz
+        res.json(Response.successResponse({
+            noteId: updatedNote.noteId,
+            title: updatedNote.title,
+            content: updatedNote.content,
+            createdAt: updatedNote.createdAt,
+            updatedAt: updatedNote.updatedAt
+        }, "Note updated successfully"));
     } catch (err) {
         let errorResponse = Response.errorResponse(err);
         res.status(errorResponse.status || Enum.HTTP_CODES.INT_SERVER_ERROR).json(errorResponse);
@@ -70,17 +96,20 @@ router.post('/delete', async (req, res) => {
     let body = req.body;
 
     try {
-        if (!body._id) {
-            throw new CustomError(Enum.HTTP_CODES.BAD_REQUEST, [], "Error! _id field must be filled!");
+        if (!body.noteIds || !Array.isArray(body.noteIds) || body.noteIds.length === 0) {
+            throw new CustomError(Enum.HTTP_CODES.BAD_REQUEST, [], "Error! noteIds field must be a non-empty array!");
         }
 
-        const deletedNote = await Note.findByIdAndDelete(body._id);
+        const deletePromises = body.noteIds.map(noteId => Note.findOneAndDelete({ noteId }));
+        const deletedNotes = await Promise.all(deletePromises);
 
-        if (!deletedNote) {
-            throw new CustomError(Enum.HTTP_CODES.NOT_FOUND, [], "Note not found!");
+        const notFoundNotes = deletedNotes.filter(note => !note);
+
+        if (notFoundNotes.length > 0) {
+            throw new CustomError(Enum.HTTP_CODES.NOT_FOUND, [], "Some notes were not found!");
         }
 
-        res.json(Response.successResponse("Note deleted successfully"));
+        res.json(Response.successResponse(`${body.noteIds.length} notes deleted successfully`));
     } catch (err) {
         let errorResponse = Response.errorResponse(err);
         res.status(errorResponse.status || Enum.HTTP_CODES.INT_SERVER_ERROR).json(errorResponse);
