@@ -6,7 +6,7 @@ const CustomError = require('../lib/Error');
 const Enum = require('../config/Enum');
 const bcrypt = require('bcrypt');
 const validator = require('validator');
-
+const AuditLogs = require('../lib/AuditLogs');
 
 router.get('/get', async (req, res) => {
   try {
@@ -47,6 +47,7 @@ router.post('/create', async (req, res) => {
 
     await user.save();
 
+    AuditLogs.info(req.user?.email, "users", "Create", user);
 
     res.json(Response.successResponse({
       userId: user.userId,
@@ -59,7 +60,6 @@ router.post('/create', async (req, res) => {
   }
 });
 
-
 router.post('/update', async (req, res) => {
   let body = req.body;
 
@@ -71,14 +71,12 @@ router.post('/update', async (req, res) => {
     let updates = {};
     if (body.username) updates.username = body.username;
     if (body.email) {
-
       if (!validator.isEmail(body.email)) {
         throw new CustomError(Enum.HTTP_CODES.BAD_REQUEST, [], "Error! Invalid email format!");
       }
       updates.email = body.email;
     }
     if (body.password) {
-
       const hashedPassword = await bcrypt.hash(body.password, 10);
       updates.password = hashedPassword;
     }
@@ -89,6 +87,7 @@ router.post('/update', async (req, res) => {
       throw new CustomError(Enum.HTTP_CODES.NOT_FOUND, [], "User not found!");
     }
 
+    AuditLogs.info(req.user?.email, "users", "Update", { userId: body.userId, ...updates });
 
     res.json(Response.successResponse({
       userId: updatedUser.userId,
@@ -115,12 +114,14 @@ router.post('/delete', async (req, res) => {
       throw new CustomError(Enum.HTTP_CODES.NOT_FOUND, [], "User not found!");
     }
 
+
+    AuditLogs.info(req.user?.email, "users", "Delete", { userId: body.userId });
+
     res.json(Response.successResponse("User deleted successfully"));
   } catch (err) {
     let errorResponse = Response.errorResponse(err);
     res.status(errorResponse.status || Enum.HTTP_CODES.INT_SERVER_ERROR).json(errorResponse);
   }
 });
-
 
 module.exports = router;

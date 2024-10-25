@@ -4,7 +4,7 @@ const Note = require('../db/models/Note');
 const Response = require('../lib/Response');
 const CustomError = require('../lib/Error');
 const Enum = require('../config/Enum');
-
+const AuditLogs = require('../lib/AuditLogs');
 
 router.get('/get-notes', async (req, res, next) => {
     try {
@@ -25,7 +25,6 @@ router.get('/get-notes', async (req, res, next) => {
     }
 });
 
-
 router.post('/create', async (req, res) => {
     let body = req.body;
 
@@ -44,20 +43,14 @@ router.post('/create', async (req, res) => {
 
         await note.save();
 
+        AuditLogs.info(req.user?.email, "notes", "Create", note);
 
-        res.json(Response.successResponse({
-            noteId: note.noteId,
-            title: note.title,
-            content: note.content,
-            createdAt: note.createdAt,
-            updatedAt: note.updatedAt
-        }, "Note saved successfully"));
+        res.json(Response.successResponse(note, "Note saved successfully"));
     } catch (err) {
         let errorResponse = Response.errorResponse(err);
         res.status(errorResponse.status || Enum.HTTP_CODES.INT_SERVER_ERROR).json(errorResponse);
     }
 });
-
 
 router.post('/update', async (req, res) => {
     let body = req.body;
@@ -77,20 +70,14 @@ router.post('/update', async (req, res) => {
             throw new CustomError(Enum.HTTP_CODES.NOT_FOUND, [], "Note not found!");
         }
 
-        // Yalnızca gerekli alanları dönüyoruz
-        res.json(Response.successResponse({
-            noteId: updatedNote.noteId,
-            title: updatedNote.title,
-            content: updatedNote.content,
-            createdAt: updatedNote.createdAt,
-            updatedAt: updatedNote.updatedAt
-        }, "Note updated successfully"));
+        AuditLogs.info(req.user?.email, "notes", "Update", { noteId: body.noteId, ...updates });
+
+        res.json(Response.successResponse(updatedNote, "Note updated successfully"));
     } catch (err) {
         let errorResponse = Response.errorResponse(err);
         res.status(errorResponse.status || Enum.HTTP_CODES.INT_SERVER_ERROR).json(errorResponse);
     }
 });
-
 
 router.post('/delete', async (req, res) => {
     let body = req.body;
@@ -100,7 +87,14 @@ router.post('/delete', async (req, res) => {
             throw new CustomError(Enum.HTTP_CODES.BAD_REQUEST, [], "Error! noteIds field must be a non-empty array!");
         }
 
-        const deletePromises = body.noteIds.map(noteId => Note.findOneAndDelete({ noteId }));
+        const noteIds = body.noteIds
+            .map(id => Number(id))
+            .filter(id => !isNaN(id));
+        if (noteIds.length === 0) {
+            throw new CustomError(Enum.HTTP_CODES.BAD_REQUEST, [], "Error! All noteIds are invalid!");
+        }
+
+        const deletePromises = noteIds.map(noteId => Note.findOneAndDelete({ noteId }));
         const deletedNotes = await Promise.all(deletePromises);
 
         const notFoundNotes = deletedNotes.filter(note => !note);
@@ -109,11 +103,14 @@ router.post('/delete', async (req, res) => {
             throw new CustomError(Enum.HTTP_CODES.NOT_FOUND, [], "Some notes were not found!");
         }
 
+        AuditLogs.info(req.user?.email, "notes", "Delete", { noteIds: body.noteIds });
+
         res.json(Response.successResponse(`${body.noteIds.length} notes deleted successfully`));
     } catch (err) {
         let errorResponse = Response.errorResponse(err);
         res.status(errorResponse.status || Enum.HTTP_CODES.INT_SERVER_ERROR).json(errorResponse);
     }
 });
+
 
 module.exports = router;
