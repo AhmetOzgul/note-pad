@@ -5,6 +5,7 @@ const Response = require('../lib/Response');
 const CustomError = require('../lib/Error');
 const Enum = require('../config/Enum');
 const AuditLogs = require('../lib/AuditLogs');
+const logger = require('../lib/logger/LoggerClass');
 
 router.get('/get-notes', async (req, res, next) => {
     try {
@@ -20,6 +21,7 @@ router.get('/get-notes', async (req, res, next) => {
 
         res.json(Response.successResponse(notes));
     } catch (err) {
+        logger.error(req.user?.email, "Notes", "Get", err);
         let errorResponse = Response.errorResponse(err);
         res.status(errorResponse.status || Enum.HTTP_CODES.INT_SERVER_ERROR).json(errorResponse);
     }
@@ -44,9 +46,11 @@ router.post('/create', async (req, res) => {
         await note.save();
 
         AuditLogs.info(req.user?.email, "notes", "Create", note);
+        logger.info(req.user?.email, "Notes", "Create", note);
 
         res.json(Response.successResponse(note, "Note saved successfully"));
     } catch (err) {
+        logger.error(req.user?.email, "Notes", "Create", err);
         let errorResponse = Response.errorResponse(err);
         res.status(errorResponse.status || Enum.HTTP_CODES.INT_SERVER_ERROR).json(errorResponse);
     }
@@ -71,9 +75,11 @@ router.post('/update', async (req, res) => {
         }
 
         AuditLogs.info(req.user?.email, "notes", "Update", { noteId: body.noteId, ...updates });
+        logger.info(req.user?.email, "Notes", "Update", { noteId: body.noteId, ...updates });
 
         res.json(Response.successResponse(updatedNote, "Note updated successfully"));
     } catch (err) {
+        logger.error(req.user?.email, "Notes", "Update", err);
         let errorResponse = Response.errorResponse(err);
         res.status(errorResponse.status || Enum.HTTP_CODES.INT_SERVER_ERROR).json(errorResponse);
     }
@@ -104,9 +110,11 @@ router.post('/delete', async (req, res) => {
         }
 
         AuditLogs.info(req.user?.email, "notes", "Delete", { noteIds: body.noteIds });
+        logger.info(req.user?.email, "Notes", "Delete", { noteIds: body.noteIds });
 
         res.json(Response.successResponse(`${body.noteIds.length} notes deleted successfully`));
     } catch (err) {
+        logger.error(req.user?.email, "Notes", "Delete", err);
         let errorResponse = Response.errorResponse(err);
         res.status(errorResponse.status || Enum.HTTP_CODES.INT_SERVER_ERROR).json(errorResponse);
     }
