@@ -4,9 +4,117 @@ const User = require('../db/models/User');
 const Response = require('../lib/Response');
 const CustomError = require('../lib/Error');
 const Enum = require('../config/Enum');
-const bcrypt = require('bcrypt');
+
 const validator = require('validator');
 const AuditLogs = require('../lib/AuditLogs');
+const config = require('../config');
+const jwt = require('jwt-simple');
+
+const auth = require("../lib/auth");
+
+
+
+router.post('/register', async (req, res) => {
+  const { username, email, password } = req.body;
+
+  try {
+    if (!username || !email || !password) {
+      throw new CustomError(Enum.HTTP_CODES.BAD_REQUEST, [], "All fields (username, email, password) must be provided!");
+    }
+
+    if (!validator.isEmail(email)) {
+      throw new CustomError(Enum.HTTP_CODES.BAD_REQUEST, [], "Invalid email format!");
+    }
+
+    const existingEmail = await User.findOne({ email });
+    if (existingEmail) {
+      throw new CustomError(Enum.HTTP_CODES.BAD_REQUEST, [], "A user with this email already exists!");
+    }
+
+    const existingUsername = await User.findOne({ username });
+    if (existingUsername) {
+      throw new CustomError(Enum.HTTP_CODES.BAD_REQUEST, [], "A user with this username already exists!");
+    }
+
+    const newUser = new User({
+      username,
+      email,
+      password,
+    });
+
+    await newUser.save();
+
+    AuditLogs.info(email, "users", "Register", newUser);
+
+    res.json(Response.successResponse({
+      userId: newUser.userId,
+      username: newUser.username,
+      email: newUser.email,
+    }, "User registered successfully"));
+  } catch (err) {
+    const errorResponse = Response.errorResponse(err);
+    res.status(errorResponse.status || Enum.HTTP_CODES.INT_SERVER_ERROR).json(errorResponse);
+  }
+});
+
+router.post('/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    User.validateFieldsBeforeAuth(email, password);
+
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      throw new CustomError(Enum.HTTP_CODES.UNAUTHORIZED, [], "Error! Wrong email or password!");
+    }
+
+    const isMatch = await user.validatePassword(password);
+    if (!isMatch) {
+      throw new CustomError(Enum.HTTP_CODES.UNAUTHORIZED, [], "Error! Wrong email or password!");
+    }
+
+    const payload = {
+      id: user.id,
+      exp: Math.floor(Date.now() / 1000) + config.JWT.EXPIRE_TIME
+    };
+    const token = jwt.encode(payload, config.JWT.SECRET);
+
+    user.currentToken = token;
+    await user.save();
+
+    res.json(Response.successResponse({
+      token,
+      user: { username: user.username }
+    }, "Login successful"));
+  } catch (err) {
+    const errorResponse = Response.errorResponse(err);
+    res.status(errorResponse.status || Enum.HTTP_CODES.INT_SERVER_ERROR).json(errorResponse);
+  }
+});
+
+
+router.all("*", auth().authenticate()), async (req, res, next) => {
+  next();
+}
+
+router.post('/logout', auth().authenticate(), async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      throw new CustomError(Enum.HTTP_CODES.NOT_FOUND, [], "User not found!");
+    }
+
+    user.currentToken = null;
+    await user.save();
+
+    res.json(Response.successResponse("Logout successful"));
+  } catch (err) {
+    const errorResponse = Response.errorResponse(err);
+    res.status(errorResponse.status || Enum.HTTP_CODES.INT_SERVER_ERROR).json(errorResponse);
+  }
+});
+
 
 router.get('/get', async (req, res) => {
   try {
@@ -76,9 +184,9 @@ router.post('/update', async (req, res) => {
       }
       updates.email = body.email;
     }
+
     if (body.password) {
-      const hashedPassword = await bcrypt.hash(body.password, 10);
-      updates.password = hashedPassword;
+      updates.password = body.password;
     }
 
     const updatedUser = await User.findOneAndUpdate({ userId: body.userId }, updates, { new: true });

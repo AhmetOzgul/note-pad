@@ -1,11 +1,5 @@
 const mongoose = require("mongoose");
-
-const counterSchema = new mongoose.Schema({
-    _id: { type: String, required: true },
-    seq: { type: Number, default: 0 }
-});
-
-const Counter = mongoose.model('Counter', counterSchema);
+const Counter = require('./Counter');
 
 const noteSchema = new mongoose.Schema({
     noteId: { type: Number, unique: true },
@@ -16,7 +10,8 @@ const noteSchema = new mongoose.Schema({
     content: {
         type: String,
         required: true
-    }
+    },
+    userId: { type: Number, required: true }
 }, {
     timestamps: true,
     versionKey: false

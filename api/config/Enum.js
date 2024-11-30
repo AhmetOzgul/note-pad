@@ -27,5 +27,6 @@ module.exports = {
         DEBUG: "DEBUG",
         VERBOSE: "VERBOSE",
         HTTP: "HTTP",
-    }
+    },
+    PASS_LENGHT: 8
 }

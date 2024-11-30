@@ -6,10 +6,15 @@ const CustomError = require('../lib/Error');
 const Enum = require('../config/Enum');
 const AuditLogs = require('../lib/AuditLogs');
 const logger = require('../lib/logger/LoggerClass');
+const auth = require("../lib/auth");
+
+router.all("*", auth().authenticate()), async (req, res, next) => {
+    next();
+}
 
 router.get('/get-notes', async (req, res) => {
     try {
-        let notes = await Note.find({});
+        let notes = await Note.find({ userId: req.user.userId }).sort({ updatedAt: -1 });
 
         notes = notes.map(note => ({
             noteId: note.noteId,
@@ -40,7 +45,8 @@ router.post('/create', async (req, res) => {
 
         let note = new Note({
             title: body.title,
-            content: body.content
+            content: body.content,
+            userId: req.user.userId
         });
 
         await note.save();
@@ -68,7 +74,7 @@ router.post('/update', async (req, res) => {
         if (body.title) updates.title = body.title;
         if (body.content) updates.content = body.content;
 
-        const updatedNote = await Note.findOneAndUpdate({ noteId: body.noteId }, updates, { new: true });
+        const updatedNote = await Note.findOneAndUpdate({ noteId: body.noteId, userId: req.user.userId }, updates, { new: true });
 
         if (!updatedNote) {
             throw new CustomError(Enum.HTTP_CODES.NOT_FOUND, [], "Note not found!");
@@ -100,7 +106,7 @@ router.post('/delete', async (req, res) => {
             throw new CustomError(Enum.HTTP_CODES.BAD_REQUEST, [], "Error! All noteIds are invalid!");
         }
 
-        const deletePromises = noteIds.map(noteId => Note.findOneAndDelete({ noteId }));
+        const deletePromises = noteIds.map(noteId => Note.findOneAndDelete({ noteId: noteId, userId: req.user.userId }));
         const deletedNotes = await Promise.all(deletePromises);
 
         const notFoundNotes = deletedNotes.filter(note => !note);
