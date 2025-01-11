@@ -11,6 +11,7 @@ const config = require('../config');
 const jwt = require('jwt-simple');
 
 const auth = require("../lib/auth");
+const TokenBlacklist = require('../db/models/TokenBlacklist');
 
 
 
@@ -44,18 +45,32 @@ router.post('/register', async (req, res) => {
 
     await newUser.save();
 
+    const payload = {
+      id: newUser.id,
+      exp: Math.floor(Date.now() / 1000) + config.JWT.EXPIRE_TIME,
+    };
+    const token = jwt.encode(payload, config.JWT.SECRET);
+
+    newUser.currentToken = token;
+    await newUser.save();
+
     AuditLogs.info(email, "users", "Register", newUser);
 
     res.json(Response.successResponse({
-      userId: newUser.userId,
-      username: newUser.username,
-      email: newUser.email,
-    }, "User registered successfully"));
+      token,
+      expires: config.JWT.EXPIRE_TIME,
+      user: {
+        userId: newUser.userId,
+        username: newUser.username,
+        email: newUser.email,
+      }
+    }, "User registered successfully and logged in"));
   } catch (err) {
     const errorResponse = Response.errorResponse(err);
     res.status(errorResponse.status || Enum.HTTP_CODES.INT_SERVER_ERROR).json(errorResponse);
   }
 });
+
 
 router.post('/login', async (req, res) => {
   try {
@@ -85,6 +100,7 @@ router.post('/login', async (req, res) => {
 
     res.json(Response.successResponse({
       token,
+      expires: config.JWT.EXPIRE_TIME,
       user: { username: user.username }
     }, "Login successful"));
   } catch (err) {
@@ -105,8 +121,15 @@ router.post('/logout', auth().authenticate(), async (req, res) => {
       throw new CustomError(Enum.HTTP_CODES.NOT_FOUND, [], "User not found!");
     }
 
-    user.currentToken = null;
-    await user.save();
+    const token = user.currentToken;
+
+    if (token) {
+      const blacklistedToken = new TokenBlacklist({ token });
+      await blacklistedToken.save();
+
+      user.currentToken = null;
+      await user.save();
+    }
 
     res.json(Response.successResponse("Logout successful"));
   } catch (err) {

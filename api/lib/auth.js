@@ -12,22 +12,22 @@ module.exports = function () {
         try {
             const user = await Users.findById(payload.id);
 
-            if (user) {
-                const tokenFromHeader = req.headers.authorization.split(' ')[1];
-                if (user.currentToken !== tokenFromHeader) {
-                    return done(null, false);
-                }
-
-                done(null, {
-                    id: user.id,
-                    userId: user.userId,
-                    username: user.username,
-                    email: user.email,
-                    exp: parseInt(Date.now() / 1000) + config.JWT.EXPIRE_TIME
-                });
-            } else {
-                done(new Error("User not found!"), null);
+            if (!user) {
+                return done(new Error("User not found!"), null);
             }
+
+            const tokenFromHeader = req.headers.authorization.split(' ')[1];
+
+            if (!user.currentToken || user.currentToken !== tokenFromHeader) {
+                return done(null, false, { message: "Invalid or expired token!" });
+            }
+            done(null, {
+                id: user.id,
+                userId: user.userId,
+                username: user.username,
+                email: user.email,
+                exp: parseInt(Date.now() / 1000) + config.JWT.EXPIRE_TIME
+            });
         } catch (error) {
             console.error("Authentication Error:", error);
             done(error, null);
